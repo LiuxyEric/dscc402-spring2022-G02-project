@@ -81,7 +81,7 @@ for mv in client.search_model_versions(f"name='{modelName}'"):
 modelName = "G02_model"
 staging_model_performace = model_performance(modelName, "Staging")
 
-if staging_model_performace < rmse_threshold:
+if staging_model_performace < rmse_threshold: # a boolean flag
     client = MlflowClient()
     model_versions = []
     
@@ -94,10 +94,12 @@ if staging_model_performace < rmse_threshold:
         version=model_versions[0],  # this model (current build)
         stage="Production"
     )
-
-# COMMAND ----------
-
-print("Performace of staging model: {}, \nPerformance of production model: {}".format(staging_model_performace, model_performance(modelName, "Production")))
+    
+    # compare staging model and prodcution model
+    print("Performace of staging model: {}, \nPerformance of production model: {}".format(staging_model_performace, model_performance(modelName, "Production")))
+    
+else:
+    print("This staging model's rmse is below the threshold. It cannot be promoted into production.")
 
 # COMMAND ----------
 
