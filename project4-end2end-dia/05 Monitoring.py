@@ -71,6 +71,7 @@ def model_performance(modelName, stage):
 modelName = "G02_model"
 client = MlflowClient()
 model_versions = []
+
 # Transition this model to staging and archive the current staging model if there is one
 for mv in client.search_model_versions(f"name='{modelName}'"):
     print(dict(mv)['version'])
@@ -83,6 +84,7 @@ staging_model_performace = model_performance(modelName, "Staging")
 if staging_model_performace < rmse_threshold:
     client = MlflowClient()
     model_versions = []
+    
     # Transition this model to staging and archive the current staging model if there is one
     for mv in client.search_model_versions(f"name='{modelName}'"):
         model_versions.append(dict(mv)['version'])
