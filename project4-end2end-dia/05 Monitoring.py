@@ -95,7 +95,7 @@ if staging_model_performace < rmse_threshold: # a boolean flag
         stage="Production"
     )
     
-    # compare staging model and prodcution model
+    # compare staging model and production model
     print("Performace of staging model: {}, \nPerformance of production model: {}".format(staging_model_performace, model_performance(modelName, "Production")))
     
 else:
