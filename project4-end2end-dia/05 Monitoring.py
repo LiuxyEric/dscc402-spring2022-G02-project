@@ -36,8 +36,8 @@ from pyspark.sql import functions as F
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC * In order to promote the Staging model into Production, we need to first define a rmse threshold. 
-# MAGIC * When the Staging model's rmse in test data in below the threshold, then we can promote our model into production.
+# MAGIC * In order to promote the Staging model into Production, we need to define a rmse threshold. 
+# MAGIC * When the Staging model's rmse in test data is below the threshold, we can promote our model into production.
 
 # COMMAND ----------
 
