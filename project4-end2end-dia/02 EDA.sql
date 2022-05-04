@@ -180,9 +180,11 @@
 -- COMMAND ----------
 
 -- MAGIC %sql
--- MAGIC select address, sum(total_supply) token_balance
--- MAGIC from ethereumetl.tokens
--- MAGIC group by address;
+-- MAGIC select address, cast(from_unixtime(timestamp) as date) as date, sum(gas_used) token_balance
+-- MAGIC from ethereumetl.blocks a
+-- MAGIC join ethereumetl.logs b
+-- MAGIC on number = block_number
+-- MAGIC group by address, cast(from_unixtime(timestamp) as date);
 
 -- COMMAND ----------
 
