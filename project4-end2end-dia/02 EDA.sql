@@ -37,7 +37,11 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select a.number as max_block_number, from_unixtime(timestamp) as date
+-- MAGIC from ethereumetl.blocks a
+-- MAGIC join (select max(number) as max_number from ethereumetl.blocks) b
+-- MAGIC on a.number = b.max_number;
 
 -- COMMAND ----------
 
@@ -46,7 +50,12 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select distinct number, from_unixtime(timestamp) date
+-- MAGIC from ethereumetl.blocks
+-- MAGIC where from_unixtime(timestamp) = (select min(from_unixtime(timestamp)) as first_transfer from ethereumetl.token_transfers
+-- MAGIC left join ethereumetl.blocks
+-- MAGIC on number = block_number);
 
 -- COMMAND ----------
 
@@ -55,7 +64,10 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select count(*) erc20_contracts
+-- MAGIC from ethereumetl.silver_contracts
+-- MAGIC where is_erc20 = True;
 
 -- COMMAND ----------
 
@@ -64,7 +76,9 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select ((select count(*) from ethereumetl.transactions where to_address = '')/count(*)) trans_to_contracts
+-- MAGIC from ethereumetl.transactions;
 
 -- COMMAND ----------
 
@@ -73,7 +87,14 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select name, count(*) transfers
+-- MAGIC from ethereumetl.tokens a
+-- MAGIC right join ethereumetl.token_transfers b
+-- MAGIC on a.address = b.token_address
+-- MAGIC group by name
+-- MAGIC order by count(*) desc
+-- MAGIC limit 100;
 
 -- COMMAND ----------
 
@@ -83,7 +104,11 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select (select count(*)
+-- MAGIC from (select count(*) new from ethereumetl.token_transfers
+-- MAGIC group by to_address
+-- MAGIC having new = 1))/count(*) fraction_to_new from ethereumetl.token_transfers;
 
 -- COMMAND ----------
 
@@ -93,7 +118,14 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select block_number, gas_price, transaction_index
+-- MAGIC from ethereumetl.transactions
+-- MAGIC where block_number = (select block_number from ethereumetl.transactions
+-- MAGIC group by block_number
+-- MAGIC order by count(*) desc
+-- MAGIC limit 1)
+-- MAGIC order by gas_price;
 
 -- COMMAND ----------
 
@@ -103,7 +135,8 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select max(value/power(10,18)/15) max_trans_per_sec from ethereumetl.transactions;
 
 -- COMMAND ----------
 
@@ -113,7 +146,8 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select sum(value)/power(10,18) ether_volume from ethereumetl.transactions;
 
 -- COMMAND ----------
 
@@ -122,7 +156,8 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select sum(gas_used) total_gas from ethereumetl.blocks;
 
 -- COMMAND ----------
 
@@ -131,7 +166,11 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select max(n) max_transfers
+-- MAGIC from (select transaction_index, sum(value) n
+-- MAGIC from ethereumetl.transactions
+-- MAGIC group by transaction_index) c;
 
 -- COMMAND ----------
 
@@ -140,7 +179,10 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select address, sum(total_supply) token_balance
+-- MAGIC from ethereumetl.tokens
+-- MAGIC group by address;
 
 -- COMMAND ----------
 
@@ -149,7 +191,13 @@
 
 -- COMMAND ----------
 
--- TBD
+-- MAGIC %sql
+-- MAGIC select cast(from_unixtime(timestamp) as date) as date, count(*) transaction_count
+-- MAGIC from ethereumetl.blocks a
+-- MAGIC right join ethereumetl.transactions b
+-- MAGIC on a.number = b.block_number
+-- MAGIC group by date
+-- MAGIC order by date;
 
 -- COMMAND ----------
 
@@ -159,8 +207,13 @@
 
 -- COMMAND ----------
 
--- TBD
-
+-- MAGIC %sql
+-- MAGIC select cast(from_unixtime(timestamp) as date) as date, count(*) erc20_transfer_count
+-- MAGIC from ethereumetl.blocks a
+-- MAGIC right join ethereumetl.token_transfers b
+-- MAGIC on a.number = b.block_number
+-- MAGIC group by date
+-- MAGIC order by date;
 
 -- COMMAND ----------
 
