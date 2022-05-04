@@ -42,6 +42,12 @@ spark.conf.set('start.date',start_date)
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC 
+# MAGIC ![](https://i.imgur.com/ARFu4aO.png)
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ### Using the Start Date from widget to find out the start block of the data.
 
 # COMMAND ----------
