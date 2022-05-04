@@ -41,7 +41,206 @@ spark.conf.set('start.date',start_date)
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### Using the Start Date from widget to find out the start block of the data.
 
+# COMMAND ----------
+
+partition_info = spark.sql("select start_block, end_block, min(timestamp) as start_time, max(timestamp) as end_time from ethereumetl.blocks group by start_block, end_block").toPandas()
+
+# COMMAND ----------
+
+from datetime import datetime
+def convert_tiemstamp(x):
+    return datetime.fromtimestamp(x).strftime("%Y-%m-%d")
+partition_info.start_time = partition_info.start_time.apply(convert_tiemstamp)
+partition_info.end_time = partition_info.end_time.apply(convert_tiemstamp)
+
+# COMMAND ----------
+
+partition_info.sort_values("start_block", inplace=True)
+
+# COMMAND ----------
+
+start_block = partition_info[partition_info.end_time >= start_date].iloc[0].start_block
+
+# COMMAND ----------
+
+start_block
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC ### Schema Validation and Migration
+# MAGIC In the below, we validate the schema of all the source tables that we will use. when the schema doesn't match with the predefined schema, we only retrieve the columns that we need.
+
+# COMMAND ----------
+
+from pyspark.sql.types import _parse_datatype_string
+ 
+silver_contract_schema = "address STRING, bytecode STRING, is_erc20 STRING, is_erc721 STRING"
+token_prices_usd_schema = "id STRING, symbol STRING, name STRING, asset_platform_id STRING, description STRING, links STRING, image STRING, contract_address STRING, sentiment_votes_up_percentage DOUBLE, sentiment_votes_down_percentage DOUBLE, market_cap_rank DOUBLE, coingecko_rank DOUBLE, coingecko_score DOUBLE, developer_score DOUBLE, community_score DOUBLE, liquidity_score DOUBLE, public_interest_score DOUBLE, price_usd DOUBLE"
+tokens_schema = "address STRING, symbol STRING, name STRING, decimals BIGINT, total_supply DECIMAL(38, 0), start_block BIGINT, end_block BIGINT"
+token_transfers_schema = "token_address STRING, from_address STRING, to_address STRING, value DECIMAL(38, 0), transaction_hash STRING, log_index BIGINT, block_number BIGINT, start_block BIGINT, end_block BIGINT"
+ 
+silver_contract_df = spark.sql("select * from ethereumetl.silver_contracts")
+assert silver_contract_df.schema == _parse_datatype_string(silver_contract_schema), "silver_contract schema does not match"
+ 
+token_prices_usd_df = spark.sql("select * from ethereumetl.token_prices_usd")
+assert token_prices_usd_df.schema == _parse_datatype_string(token_prices_usd_schema), "token_prices_usd_schema does not match"
+ 
+tokens_df = spark.sql("select * from ethereumetl.tokens")
+assert tokens_df.schema == _parse_datatype_string(tokens_schema), "tokens schema does not match"
+ 
+token_transfers_df = spark.sql("select * from ethereumetl.token_transfers")
+assert token_transfers_df.schema == _parse_datatype_string(token_transfers_schema), "token_transfers schema does not match"
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC 
+# MAGIC ### Extract tokens that follow ERC-20 stardard
+# MAGIC - In the below code block, we first extract all the tokens that are ERC-20 standard and saved it into the table g02_db.valid_token_meta_silver.
+# MAGIC - we join the token's description, link and image information from ethereumetl.token_prices_usd table.
+# MAGIC - The valid_token_meta_silver table is a pretty small table, no need to use optimize.
+
+# COMMAND ----------
+
+valid_token_meta = spark.sql(
+"""
+select 
+  a.address as contract_address, b.name, b.symbol, c.description, c.links, c.image
+from 
+( select 
+    distinct(address) 
+  from 
+    ethereumetl.silver_contracts 
+  where is_erc20 = 'True') a 
+join (
+  select distinct name, address, symbol from ethereumetl.tokens 
+) b
+on a.address == b.address
+join ( 
+  select 
+    distinct contract_address, description, links, image
+  from 
+    ethereumetl.token_prices_usd ) c
+on b.address == c.contract_address 
+order by a.address
+"""
+)
+ 
+# In case we need to rerun the code, we need to first drop the table if it's already exists in the database.
+spark.sql("drop table if exists g02_db.valid_token_meta_silver")
+valid_token_meta.write.saveAsTable("g02_db.valid_token_meta_silver")
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC describe ethereumetl.token_transfers 
+
+# COMMAND ----------
+
+valid_token_transfer = spark.sql(
+"""
+select a.* from ethereumetl.token_transfers a 
+join g02_db.valid_token_meta_silver b 
+on a.token_address = b.contract_address
+where a.start_block >= {}
+""".format(start_block)
+)
+ 
+spark.sql("drop table if exists g02_db.valid_token_transfer_silver")
+valid_token_transfer.write.saveAsTable("g02_db.valid_token_transfer_silver")
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC select count(*) from g02_db.valid_token_transfer_silver
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC optimize g02_db.valid_token_transfer_silver
+
+# COMMAND ----------
+
+triplets = spark.sql(
+"""
+select 
+  wallet_address, 
+  token_address, 
+  count(*) as interacted_count 
+from (
+    select 
+      from_address as wallet_address, 
+      token_address
+    from 
+      g02_db.valid_token_transfer_silver
+ 
+    union all
+    
+    select 
+      to_address as wallet_address, 
+      token_address 
+    from 
+      g02_db.valid_token_transfer_silver ) a
+group by wallet_address, token_address
+"""
+)
+ 
+spark.sql("drop table if exists g02_db.token_transfer_triplet_silver")
+triplets.write.saveAsTable("g02_db.token_transfer_triplet_silver")
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC optimize g02_db.token_transfer_triplet_silver
+# MAGIC zorder by (interacted_count)
+
+# COMMAND ----------
+
+triplets = spark.sql("select * from g02_db.token_transfer_triplet_silver").cache()
+
+# COMMAND ----------
+
+unique_users = {key.wallet_address:value for value, key in enumerate(sorted(triplets.select("wallet_address").distinct().collect()))}
+unique_tokens = {key.token_address:value for value, key in enumerate(sorted(triplets.select("token_address").distinct().collect()))}
+
+# COMMAND ----------
+
+users_ids = spark.createDataFrame(pd.DataFrame({"wallet_address":unique_users.keys(), "wallet_id":unique_users.values()}))
+spark.sql("drop table if exists g02_db.wallet_address_ids_silver")
+users_ids.write.saveAsTable("g02_db.wallet_address_ids_silver")
+ 
+token_ids = spark.createDataFrame(pd.DataFrame({"token_address":unique_tokens.keys(), "token_id":unique_tokens.values()}))
+spark.sql("drop table if exists g02_db.token_address_ids_silver")
+token_ids.write.saveAsTable("g02_db.token_address_ids_silver")
+
+# COMMAND ----------
+
+from pyspark.sql import functions as F 
+from pyspark.sql.types import IntegerType
+
+# COMMAND ----------
+
+def user_mapping(x):
+    return unique_users[x]
+ 
+def token_mapping(x):
+    return unique_tokens[x]
+ 
+user_mapping_udf = F.udf(user_mapping, IntegerType())
+token_mapping_udf = F.udf(token_mapping, IntegerType())
+ 
+triplets = (triplets.withColumn("walletId", user_mapping_udf(F.col("wallet_address")))
+                          .withColumn("tokenId", token_mapping_udf(F.col("token_address"))))
+
+# COMMAND ----------
+
+spark.sql("drop table if exists g02_db.final_triplets_silver")
+triplets.write.saveAsTable("g02_db.final_triplets_silver")
 
 # COMMAND ----------
 
